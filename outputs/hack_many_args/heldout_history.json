@@ -10,29 +10,29 @@
  },
  {
   "step": 20,
-  "Valid tool-call JSON (%)": 100.0,
-  "Correct tool selection (%)": 100.0,
-  "Correct arguments (%)": 42.5,
-  "Overall task success (%)": 42.5,
+  "Valid tool-call JSON (%)": 87.5,
+  "Correct tool selection (%)": 87.5,
+  "Correct arguments (%)": 0.0,
+  "Overall task success (%)": 0.0,
   "Unnecessary tool calls (%)": 0.0,
-  "Mean reward": 0.597
+  "Mean reward": 0.237
  },
  {
   "step": 40,
-  "Valid tool-call JSON (%)": 2.5,
-  "Correct tool selection (%)": 0.0,
-  "Correct arguments (%)": 0.0,
-  "Overall task success (%)": 0.0,
-  "Unnecessary tool calls (%)": 5.0,
-  "Mean reward": -0.193
+  "Valid tool-call JSON (%)": 100.0,
+  "Correct tool selection (%)": 100.0,
+  "Correct arguments (%)": 12.5,
+  "Overall task success (%)": 12.5,
+  "Unnecessary tool calls (%)": 0.0,
+  "Mean reward": 0.388
  },
  {
   "step": 60,
-  "Valid tool-call JSON (%)": 0.0,
-  "Correct tool selection (%)": 0.0,
-  "Correct arguments (%)": 0.0,
-  "Overall task success (%)": 0.0,
-  "Unnecessary tool calls (%)": 25.0,
-  "Mean reward": -0.2
+  "Valid tool-call JSON (%)": 100.0,
+  "Correct tool selection (%)": 100.0,
+  "Correct arguments (%)": 12.5,
+  "Overall task success (%)": 12.5,
+  "Unnecessary tool calls (%)": 0.0,
+  "Mean reward": 0.388
  }
 ]
