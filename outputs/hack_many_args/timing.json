@@ -1,0 +1,8 @@
+{
+ "steps": 60,
+ "sec_per_step_after_warmup": 3.74,
+ "first_steps": [
+  2.99,
+  3.03
+ ]
+}

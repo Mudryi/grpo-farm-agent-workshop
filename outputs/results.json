@@ -1,0 +1,26 @@
+{
+ "Before GRPO": {
+  "Valid tool-call JSON (%)": 97.5,
+  "Correct tool selection (%)": 92.5,
+  "Correct arguments (%)": 77.5,
+  "Overall task success (%)": 77.5,
+  "Unnecessary tool calls (%)": 0.0,
+  "Mean reward": 0.82
+ },
+ "After GRPO (live)": {
+  "Valid tool-call JSON (%)": 100.0,
+  "Correct tool selection (%)": 100.0,
+  "Correct arguments (%)": 97.5,
+  "Overall task success (%)": 97.5,
+  "Unnecessary tool calls (%)": 0.0,
+  "Mean reward": 0.982
+ },
+ "After GRPO (prepared)": {
+  "Valid tool-call JSON (%)": 100.0,
+  "Correct tool selection (%)": 87.5,
+  "Correct arguments (%)": 87.5,
+  "Overall task success (%)": 87.5,
+  "Unnecessary tool calls (%)": 0.0,
+  "Mean reward": 0.887
+ }
+}

@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+dist/
+# model checkpoints (~28 MB each) and logs: regenerate locally
+outputs/*
+!outputs/results.json
+!outputs/*/log_history.json
+!outputs/*/heldout_history.json
+!outputs/*/timing.json
+!outputs/*/
+outputs/*/*.safetensors
+outputs/*/tokenizer*
+outputs/*/*.jinja
+outputs/*/README.md
+outputs/*/adapter_config.json
+outputs/*/training_args.bin
