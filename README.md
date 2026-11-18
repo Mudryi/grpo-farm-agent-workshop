@@ -1,6 +1,6 @@
 # Workshop: Training Qwen with GRPO for a Farm Operations Agent
 
-3-hour practical lecture · Qwen2.5-0.5B-Instruct · GRPO + LoRA · Hugging Face TRL
+90–100 min practical lecture · Qwen2.5-0.5B-Instruct · GRPO + LoRA · Hugging Face TRL
 
 Students train a small LLM with reinforcement learning (GRPO) to choose the right
 **read-only farm tool** and its arguments for a farm manager's question.
@@ -20,6 +20,7 @@ src/farm_grpo/
   rewards_bad.py            deliberately hackable rewards (Section 8)
   evaluate.py               generation, metrics, error breakdown, reward-variance check
   train.py                  GRPOTrainer + LoRA + timing / held-out callbacks + CLI
+  background.py             start/monitor training runs as background processes (start_runs, status, wait_for)
   agent.py                  multi-step investigation loop + outcome grading
   plotting.py               advantage toy plot, training curves, comparison chart
 solutions/rewards_solution.py   reference reward implementation (instructor)
@@ -29,16 +30,8 @@ data/                       generated jsonl + farm_world.json
 outputs/                    checkpoints: prepared_run/, live_run/, hack_*/
 ```
 
-| Section | Time | Spec item |
-|---|---|---|
-| 1 | 0–35 | Why RL, RL vocabulary, GRPO advantage formula + toy plot |
-| 2 | 35–55 | Farm environment, tools, "was the robot late?" walkthrough |
-| 3 | 55–80 | Dataset generation, template-family split, leakage checks |
-| 4 | — | Baseline metrics + **reward-variance (GRPO signal) check** |
-| 5 | 80–105 | Student reward TODOs (+0.1 format / +0.2 tool / +0.7 args / −0.2 invalid) |
-| 6 | 105–120 | Measure sec/step, live GRPO run, prepared run curves |
-| 7 | 120–150 | Before/after table, error analysis, fixed vs broken prompts |
-| 8 | 150–180 | Reward-hacking experiment + multi-step agent transfer test |
+Format: **90–100 min**. GRPO training starts in the background at minute ~3 and finishes during the intro.
+The minute-by-minute plan and the exact commands are in **[`DEMO.md`](DEMO.md)**.
 
 ## Setup
 
@@ -74,8 +67,7 @@ uv run python -m farm_grpo.train --steps 60 --reward many_args --lr 5e-5
 uv run jupyter nbconvert --to notebook --execute workshop.ipynb --output workshop_executed.ipynb
 ```
 
-Switches at the top of the notebook: `RUN_LIVE_TRAINING`, `RUN_HACK_TRAINING`, `HACK_STEPS`.
-`LIVE_STEPS` is set automatically from the measured sec/step (budget `LIVE_BUDGET_MIN`).
+Notebook switch (2nd code cell): `TRAINING_MODE = "background" | "inline" | "pretrained"` (see `DEMO.md`).
 
 Student handout: `uv run python scripts/make_student_copy.py` → `dist/student/` (no solutions, no checkpoints,
 no outputs). Section 5 then requires

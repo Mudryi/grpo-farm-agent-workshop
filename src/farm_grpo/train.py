@@ -157,7 +157,8 @@ def main():
     if a.lr:
         cfg.learning_rate = a.lr
     records = generate_records(cfg.n_train, cfg.n_val, cfg.n_test, cfg.seed)
-    save_records(records, cfg.data_dir)
+    if not (cfg.data_dir / "train.jsonl").exists():  # don't rewrite while other runs/notebook read it
+        save_records(records, cfg.data_dir)
 
     if a.reward == "good":
         from solutions.rewards_solution import REWARD_FUNCS as funcs

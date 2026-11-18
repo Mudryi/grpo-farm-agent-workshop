@@ -23,7 +23,7 @@ def code(s: str):
 md(r"""
 # From LLM to Farm Operations Agent: Reinforcement Learning with GRPO
 
-**3-hour practical workshop · Qwen2.5-0.5B-Instruct + GRPO + LoRA · Hugging Face TRL**
+**90–100 min practical workshop · Qwen2.5-0.5B-Instruct + GRPO + LoRA · Hugging Face TRL**
 
 > *Can we improve an LLM's ability to investigate farm operations by rewarding it for choosing the correct tools and using the returned data?*
 
@@ -31,15 +31,16 @@ md(r"""
 
 | Section | Time | Topic |
 |---|---|---|
-| 0 | — | Setup |
-| 1 | 0–35 min | Why RL? · How GRPO works |
-| 2 | 35–55 min | The farm environment (tools + simulated data) |
-| 3 | 55–80 min | Training dataset |
-| 4 | — | Baseline: the pretrained model |
-| 5 | 80–105 min | **Student exercise:** reward functions |
-| 6 | 105–120 min | Train Qwen with GRPO |
-| 7 | 120–150 min | Evaluate the trained policy |
-| 8 | 150–180 min | Challenge: reward hacking & multi-step agent |
+| 0 | 0–5 min | Setup + **start GRPO training in the background** |
+| 1 | 5–25 min | Why RL? · How GRPO works · the bigger picture *(training runs meanwhile)* |
+| 2 | 25–33 min | The farm environment (tools + simulated data) |
+| 3 | 33–40 min | Training dataset |
+| 4 | 40–47 min | Baseline + GRPO signal check |
+| 5 | 47–62 min | **Student exercise:** reward functions |
+| 6 | 62–70 min | GRPO training results |
+| 7 | 70–82 min | Evaluate the trained policy |
+| 8 | 82–95 min | Challenge: reward hacking & multi-step agent |
+| — | 95–100 min | Wrap-up / buffer |
 
 Code lives in `src/farm_grpo/` (one module per section); the notebook only orchestrates.
 """)
@@ -58,7 +59,9 @@ import torch, pandas as pd
 import matplotlib.pyplot as plt
 pd.set_option("display.max_colwidth", 120)
 
-from farm_grpo.config import get_config
+import sys
+from farm_grpo.config import get_config, PROJECT_ROOT
+sys.path.insert(0, str(PROJECT_ROOT))   # so `solutions/` imports from any working directory
 cfg = get_config()
 
 print("torch", torch.__version__, "| CUDA:", torch.cuda.is_available(),
@@ -66,17 +69,39 @@ print("torch", torch.__version__, "| CUDA:", torch.cuda.is_available(),
 pd.Series(cfg.to_dict(), name="config").to_frame()
 """)
 code("""
-# ---- Instructor switches --------------------------------------------------------------
-RUN_LIVE_TRAINING = True              # Section 6: train live in class
-LIVE_STEPS = cfg.live_max_steps       # re-set after measuring sec/step (Section 6.1)
-RUN_HACK_TRAINING = True              # Section 8: train with a deliberately bad reward
-HACK_STEPS = 60
+# ---- Instructor switch -----------------------------------------------------------------
+TRAINING_MODE = "background"   # "background": start both GRPO runs NOW, they train while we talk (~5-8 min)
+                               # "inline":     train inside the Section 6 / 8 cells (blocks ~4 min each)
+                               # "pretrained": no training at all, load the saved checkpoints
+LIVE_STEPS, HACK_STEPS = cfg.live_max_steps, 60
+
+CKPT = cfg.data_dir / "checkpoints"   # originals from the dry run (never overwritten)
+if TRAINING_MODE == "pretrained" and CKPT.exists():
+    LIVE_DIR, HACK_DIR = CKPT / "live_run", CKPT / "hack_many_args"
+else:
+    LIVE_DIR, HACK_DIR = cfg.live_run_dir, cfg.output_dir / "hack_many_args"
+print(TRAINING_MODE, "| live:", LIVE_DIR, "| hack:", HACK_DIR)
+""")
+md("""
+### Start training now. We look at the result in Section 6.
+
+Two GRPO runs start as **separate processes** on the GPU (reference reward functions):
+* `live`: the real reward (format + tool + arguments), 100 steps
+* `hack`: a deliberately bad reward (`many_args`), 60 steps, for Section 8
+
+Run `status()` any time to peek at progress.
+""")
+code("""
+from farm_grpo.background import start_runs, status, wait_for
+if TRAINING_MODE == "background":
+    start_runs(["live", "hack"])
+status()
 """)
 
 # ======================================================================================
 md(r"""
 ---
-# Section 1 · Why reinforcement learning? How GRPO works  *(0–35 min)*
+# Section 1 · Why reinforcement learning? How GRPO works  *(5–25 min)*
 
 ## 1.1 Four questions to start
 
@@ -123,11 +148,44 @@ for name, r in groups.items():
     print(f"{name:<30} rewards={r}  advantages={group_advantages(r).round(2).tolist()}")
 plot_advantages(groups);
 """)
+md(r"""
+## 1.4 While the model trains: the bigger picture
+
+**Where GRPO fits**
+
+| Method | Learning signal | What you need | Known from |
+|---|---|---|---|
+| SFT | imitate demonstrations | a correct answer for every prompt | every instruct model |
+| RLHF with PPO | reward model trained on human preferences, plus a learned critic | policy + reference + reward model + value model (4 networks) | InstructGPT / ChatGPT |
+| DPO | offline preference pairs, no sampling, no reward model | (chosen, rejected) pairs | many open models |
+| **GRPO** | **any reward you can compute**, online sampling, group mean as baseline | policy (+ optional reference for KL) | DeepSeekMath, DeepSeek-R1 |
+
+**RL with verifiable rewards (RLVR).** When correctness can be *checked* (math answer, unit tests, a valid tool call), the reward is a program, not a learned model.
+That is our setup. It is cheaper and harder to fool than a learned reward model, but **not impossible to hack** (Section 8).
+
+**The DeepSeek-R1 story.** R1-Zero was trained with GRPO directly from a base model using only rule-based rewards (answer accuracy + output format).
+Long step-by-step reasoning *emerged* without any reasoning demonstrations. Same mechanics as today, much bigger scale.
+
+**Knobs you will see in TRL's `GRPOConfig`**
+* `num_generations` (G): more samples give a better baseline but cost more generation.
+* `beta`: KL penalty to a frozen reference model (0 = no reference model, saves memory).
+* `loss_type` (`grpo`, `dr_grpo`, `dapo`; TRL 1.x defaults to `dapo`) and `scale_rewards` (divide by the group std or not; Dr. GRPO argues the std/length normalisation biases learning).
+* `epsilon`: PPO-style clipping of the policy ratio.
+
+**Cost reality.** Rollout *generation* dominates the time. Production setups generate with vLLM (`use_vllm=True`) and train with LoRA or many GPUs.
+
+**Agentic RL.** Multi-turn tool use means the reward arrives only at the end, and you must decide which step deserved credit. TRL supports tool rollouts (`environment_factory`). See Section 8.2.
+
+**Questions for the room:** Where in your work could you *verify* an outcome automatically? What would a cheating model do to your reward?
+""")
+code("""
+status()   # peek at the background runs
+""")
 
 # ======================================================================================
 md("""
 ---
-# Section 2 · The farm environment  *(35–55 min)*
+# Section 2 · The farm environment  *(25–33 min)*
 
 A simplified, **synthetic** dairy farm: 4 barns (A–D), 8 cameras (two per barn), a feed-pushing robot, a feed mixer wagon and a feeding plan.
 "Today" in the simulation is fixed at **2026-03-10**, so labels are reproducible.
@@ -176,7 +234,7 @@ The full investigation returns in Section 8.
 # ======================================================================================
 md("""
 ---
-# Section 3 · Training dataset  *(55–80 min)*
+# Section 3 · Training dataset  *(33–40 min)*
 
 Synthetic farm requests for 4 tools, with linguistic variation, **distractors** (mentions of other tools/barns) and unseen values.
 
@@ -219,7 +277,7 @@ print("\\nSystem prompt the model sees:\\n" + "-" * 60 + "\\n" + SYSTEM_PROMPT)
 # ======================================================================================
 md("""
 ---
-# Section 4 · Baseline: the pretrained model
+# Section 4 · Baseline: the pretrained model  *(40–47 min)*
 
 Before training: how well does the base Qwen2.5-0.5B-Instruct pick tools (greedy decoding)?
 """)
@@ -256,7 +314,7 @@ If ~100% were "all equally wrong", there would be no signal either. You would th
 # ======================================================================================
 md("""
 ---
-# Section 5 · Student exercise: reward functions  *(80–105 min)*
+# Section 5 · Student exercise: reward functions  *(47–62 min)*
 
 | Reward | Condition | Score |
 |---|---|---|
@@ -338,6 +396,9 @@ for t, *scores in zip(row.completions, *[f(comps, **cols) for f in reward_funcs]
     print(f"{sum(scores):+.2f}  {scores}  {t[:110]!r}")
 """)
 md("""
+**Note:** the background run started in Section 0 uses the **reference** rewards, which pass exactly the same `check_rewards` tests as yours.
+To train with *your* functions, set `TRAINING_MODE = "inline"` (≈ 4 min).
+
 **Extension idea:** `solutions/rewards_solution.py::args_partial_reward` gives *partial* credit per correct argument.
 Does a denser reward help GRPO? What could it break?
 """)
@@ -345,7 +406,7 @@ Does a denser reward help GRPO? What could it break?
 # ======================================================================================
 md("""
 ---
-# Section 6 · Train Qwen with GRPO  *(105–120 min)*
+# Section 6 · GRPO training results  *(62–70 min)*
 
 Configuration: LoRA r=8, G=4 completions per prompt, 4 prompts per step (16 completions), max 96 new tokens, β=0, lr 2e-5.
 """)
@@ -358,33 +419,27 @@ print({k: getattr(g, k) for k in ["num_generations", "per_device_train_batch_siz
                                   "learning_rate", "beta", "temperature", "loss_type", "scale_rewards", "bf16"]})
 """)
 md("""
-## 6.1 Measure time per step first
+## 6.1 Get the live run
 
-Never assume a step count fits into 10 minutes. Measure seconds/step **including rollout generation** after a warm-up, then choose `LIVE_STEPS`.
+* `background`: it has been training since Section 0. This cell waits if it is not finished yet.
+* `inline`: trains here, now (~4 min). Talk through the logs while it runs.
+* `pretrained`: loads the saved checkpoint.
+
+What to read in the logs: `reward` should rise; `reward_std` and `frac_reward_zero_std` tell you how much learning signal is left.
 """)
 code("""
-_, bench_timer = train_grpo(cfg, train_ds, reward_funcs, cfg.output_dir / "benchmark", max_steps=6, save=False)
-bench = bench_timer.summary(warmup=2)
-print(bench)
-LIVE_BUDGET_MIN = 8
-LIVE_STEPS = min(cfg.live_max_steps, int(LIVE_BUDGET_MIN * 60 / bench["sec_per_step_after_warmup"]))
-print(f"-> LIVE_STEPS = {LIVE_STEPS}  (~{LIVE_STEPS * bench['sec_per_step_after_warmup'] / 60:.1f} min)")
-""")
-md("""
-## 6.2 Live training run
-
-While it runs, watch the logs. `reward` should rise, `reward_std` and `frac_reward_zero_std` tell you how much signal is left.
-""")
-code("""
-if RUN_LIVE_TRAINING:
-    trainer, timer = train_grpo(cfg, train_ds, reward_funcs, cfg.live_run_dir, max_steps=LIVE_STEPS,
+if TRAINING_MODE == "background":
+    display(status())
+    wait_for(["live"])
+elif TRAINING_MODE == "inline":
+    trainer, timer = train_grpo(cfg, train_ds, reward_funcs, LIVE_DIR, max_steps=LIVE_STEPS,
                                 heldout_records=records["val"], heldout_every=max(LIVE_STEPS // 4, 1))
-    live_log, live_heldout = trainer.state.log_history, trainer.heldout_history
     print(timer.summary())
     del trainer; torch.cuda.empty_cache()
-else:
-    live_log = json.loads((cfg.live_run_dir / "log_history.json").read_text())
-    live_heldout = json.loads((cfg.live_run_dir / "heldout_history.json").read_text())
+
+live_log = json.loads((LIVE_DIR / "log_history.json").read_text())
+live_heldout = json.loads((LIVE_DIR / "heldout_history.json").read_text())
+print("timing:", json.loads((LIVE_DIR / "timing.json").read_text()))
 """)
 code("""
 from farm_grpo.plotting import plot_training
@@ -410,13 +465,13 @@ md("**Note:** training reward alone does *not* prove learning. Always look at th
 # ======================================================================================
 md("""
 ---
-# Section 7 · Evaluate the trained policy  *(120–150 min)*
+# Section 7 · Evaluate the trained policy  *(70–82 min)*
 
 Same 80 **test** prompts (unseen template families, unseen barn D / cameras 7–8), greedy decoding.
 """)
 code("""
 results, dfs = {"Before GRPO": base_metrics}, {"Before GRPO": base_df}
-for name, path in [("After GRPO (live)", cfg.live_run_dir), ("After GRPO (prepared)", cfg.prepared_run_dir)]:
+for name, path in [("After GRPO (live)", LIVE_DIR), ("After GRPO (prepared)", cfg.prepared_run_dir)]:
     if (path / "adapter_model.safetensors").exists():
         m, tok = load_model(cfg.model_id, adapter_path=str(path))
         results[name], dfs[name] = evaluate(m, tok, records["test"], cfg.eval_batch_size, cfg.eval_max_new_tokens)
@@ -453,7 +508,7 @@ code("""
 a[~a.task_success][["question", "expected_args", "completion", "error"]].head(10)
 """)
 md("""
-**Instructor note (from the dry run on DGX Spark, see `MEASURED.md`):** the 100-step *live* run beat the 500-step *prepared* run on test.
+**Instructor note (dry runs, see `MEASURED.md`):** the 500-step *prepared* run was never better than the 100-step *live* run (97.5 % vs 87.5 % on the DGX Spark; a tie at 87.5 % on the 3090).
 The longer run learned a shortcut on the test-only distractor family `robot_distract2` ("The schedule for Barn B is fine. Which feed-push runs…").
 It now picks `get_feeding_schedule` because the word *schedule* appears. Validation accuracy never showed this, because validation uses a *different* family.
 This is exactly why we split by template family and keep a separate test set: **more RL steps ≠ better policy**.
@@ -467,7 +522,7 @@ This is exactly why we split by template family and keep a separate test set: **
 # ======================================================================================
 md("""
 ---
-# Section 8 · Challenge  *(150–180 min)*
+# Section 8 · Challenge  *(82–95 min)*
 
 ## 8.1 Reward hacking
 
@@ -480,21 +535,23 @@ md("""
 | `many_args_reward` | 0.25 per argument key ("detailed calls") | Stuff the arguments with extra keys |
 
 Train with one of them, then measure with the **real** metrics. Training reward goes up. Does task success?
+The background run (Section 0) used `many_args`. To try the others, set `TRAINING_MODE = "inline"` and change `HACK`.
 """)
 code("""
 from farm_grpo.rewards_bad import BAD_REWARDS
-HACK = "many_args"          # try: "format_only", "keyword", "many_args"
-hack_dir = cfg.output_dir / f"hack_{HACK}"
+HACK = "many_args"          # inline mode: try "format_only", "keyword", "many_args"
+hack_dir = HACK_DIR if HACK == "many_args" else cfg.output_dir / f"hack_{HACK}"
 
-if RUN_HACK_TRAINING:
+if TRAINING_MODE == "background":
+    wait_for(["hack"])
+elif TRAINING_MODE == "inline":
     trainer, _ = train_grpo(cfg, train_ds, BAD_REWARDS[HACK], hack_dir, max_steps=HACK_STEPS,
                             heldout_records=records["val"], heldout_every=max(HACK_STEPS // 3, 1),
                             learning_rate=5e-5)
-    hack_log, hack_heldout = trainer.state.log_history, trainer.heldout_history
     del trainer; torch.cuda.empty_cache()
-else:
-    hack_log = json.loads((hack_dir / "log_history.json").read_text())
-    hack_heldout = json.loads((hack_dir / "heldout_history.json").read_text())
+
+hack_log = json.loads((hack_dir / "log_history.json").read_text())
+hack_heldout = json.loads((hack_dir / "heldout_history.json").read_text())
 
 plot_training(hack_log, hack_heldout, title=f"Bad reward: {HACK}");
 """)
@@ -524,7 +581,7 @@ pd.DataFrame([{"question": t.question, **t.truth} for t in tasks])
 code("""
 agent_results = {}
 candidates = [("Before GRPO", None)] + [(n, p) for n, p in [("After GRPO (prepared)", cfg.prepared_run_dir),
-                                                             ("After GRPO (live)", cfg.live_run_dir)]
+                                                             ("After GRPO (live)", LIVE_DIR)]
                                         if (p / "adapter_model.safetensors").exists()][:1]
 for name, path in candidates:
     m, tok = load_model(cfg.model_id, adapter_path=str(path) if path else None)

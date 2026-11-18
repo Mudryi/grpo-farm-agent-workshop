@@ -21,3 +21,4 @@ outputs/*/training_args.bin
 # moved from the DGX Spark: original checkpoints + Claude chat transcript (keep local)
 data/checkpoints/
 data/chat_history/
+outputs/logs/

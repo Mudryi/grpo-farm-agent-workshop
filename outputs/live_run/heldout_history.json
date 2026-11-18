@@ -21,10 +21,10 @@
   "step": 50,
   "Valid tool-call JSON (%)": 100.0,
   "Correct tool selection (%)": 100.0,
-  "Correct arguments (%)": 90.0,
-  "Overall task success (%)": 90.0,
+  "Correct arguments (%)": 92.5,
+  "Overall task success (%)": 92.5,
   "Unnecessary tool calls (%)": 0.0,
-  "Mean reward": 0.93
+  "Mean reward": 0.948
  },
  {
   "step": 75,
