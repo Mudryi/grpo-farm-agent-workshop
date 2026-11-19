@@ -4,6 +4,7 @@ Notebook:   trainer, timer = train_grpo(cfg, train_ds, reward_funcs, output_dir,
 CLI (prepared checkpoint before class):
     uv run python -m farm_grpo.train --steps 300 --output outputs/prepared_run
     uv run python -m farm_grpo.train --steps 60 --reward format_only --output outputs/hack_format_only
+    uv run python -m farm_grpo.train --lang uk --steps 500          # Ukrainian requests -> outputs/uk/prepared_run
 """
 
 from __future__ import annotations
@@ -151,19 +152,20 @@ def main():
     p.add_argument("--reward", default="good", choices=["good", "partial", *BAD_REWARDS])
     p.add_argument("--lr", type=float, default=None)
     p.add_argument("--heldout-every", type=int, default=25)
+    p.add_argument("--lang", default="en", choices=["en", "uk"], help="language of the user requests")
     a = p.parse_args()
 
-    cfg = get_config()
+    cfg = get_config(lang=a.lang)
     if a.lr:
         cfg.learning_rate = a.lr
-    records = generate_records(cfg.n_train, cfg.n_val, cfg.n_test, cfg.seed)
+    records = generate_records(cfg.n_train, cfg.n_val, cfg.n_test, cfg.seed, lang=cfg.lang)
     if not (cfg.data_dir / "train.jsonl").exists():  # don't rewrite while other runs/notebook read it
         save_records(records, cfg.data_dir)
 
     if a.reward == "good":
-        from solutions.rewards_solution import REWARD_FUNCS as funcs
+        from .rewards import REWARD_FUNCS as funcs
     elif a.reward == "partial":
-        from solutions.rewards_solution import args_partial_reward, format_reward, tool_reward
+        from .rewards import args_partial_reward, format_reward, tool_reward
         funcs = [format_reward, tool_reward, args_partial_reward]
     else:
         funcs = BAD_REWARDS[a.reward]

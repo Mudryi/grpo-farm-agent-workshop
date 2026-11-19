@@ -84,3 +84,18 @@ def plot_comparison(table: pd.DataFrame):
     ax.legend(fontsize=8, loc="lower right")
     plt.tight_layout()
     return ax.figure
+
+
+def training_summary(log_history: list[dict], heldout: list[dict] | None = None, window: int = 10) -> str:
+    """1-3 sentence summary of a run: reward / no-signal groups at start vs end, held-out success."""
+    logs = pd.DataFrame([h for h in log_history if "reward" in h])
+    first, last = logs.head(window), logs.tail(window)
+    lines = [f"Mean training reward rose from {first['reward'].mean():.2f} (first {window} steps) "
+             f"to {last['reward'].mean():.2f} (last {window} steps)."]
+    if "frac_reward_zero_std" in logs:
+        lines.append(f"Groups with zero reward std (no learning signal): {first['frac_reward_zero_std'].mean():.0%} "
+                     f"-> {last['frac_reward_zero_std'].mean():.0%}.")
+    if heldout:
+        h = [x["Overall task success (%)"] for x in heldout]
+        lines.append(f"Held-out task success: {h[0]:.1f}% at step 0 -> {h[-1]:.1f}% at the end (best {max(h):.1f}%).")
+    return "\n".join(lines)

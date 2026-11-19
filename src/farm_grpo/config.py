@@ -19,6 +19,7 @@ class WorkshopConfig:
     # ---- model -------------------------------------------------------------
     model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"
     seed: int = 42
+    lang: str = "en"                   # language of the user requests: "en" or "uk"
 
     # ---- dataset sizes (teaching values) ----------------------------------
     n_train: int = 240
@@ -70,8 +71,17 @@ class WorkshopConfig:
         return d
 
 
-def get_config(**overrides) -> WorkshopConfig:
-    cfg = WorkshopConfig(**overrides)
+LANGS = ("en", "uk")
+
+
+def get_config(lang: str = "en", **overrides) -> WorkshopConfig:
+    """lang="uk" keeps data and outputs separate: data/uk/, outputs/uk/ (English files untouched)."""
+    if lang not in LANGS:
+        raise ValueError(f"lang must be one of {LANGS}")
+    if lang != "en":
+        overrides.setdefault("data_dir", DATA_DIR / lang)
+        overrides.setdefault("output_dir", OUTPUT_DIR / lang)
+    cfg = WorkshopConfig(lang=lang, **overrides)
     if os.environ.get("FARM_GRPO_MODEL"):
         cfg.model_id = os.environ["FARM_GRPO_MODEL"]
     return cfg

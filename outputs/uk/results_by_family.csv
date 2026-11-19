@@ -1,0 +1,9 @@
+family,Before GRPO,After GRPO,Hacked (many_args)
+cam_distract2,50.0,90.0,0.0
+cam_video,30.0,70.0,0.0
+mixer_distract2,0.0,0.0,0.0
+mixer_fresh,80.0,90.0,0.0
+robot_count,10.0,60.0,0.0
+robot_distract2,70.0,50.0,0.0
+sched_cows,40.0,90.0,0.0
+sched_distract2,20.0,30.0,0.0

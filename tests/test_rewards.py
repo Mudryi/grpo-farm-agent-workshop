@@ -1,9 +1,8 @@
 import json
 
 from farm_grpo.evaluate import score_completion
-from farm_grpo.rewards import TEST_CASES, check_rewards
+from farm_grpo.rewards import REWARD_FUNCS, TEST_CASES, check_rewards
 from farm_grpo.rewards_bad import keyword_reward
-from solutions.rewards_solution import REWARD_FUNCS
 
 
 def test_solution_passes_harness():

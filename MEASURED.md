@@ -1,7 +1,7 @@
 # Dry-run measurements: DGX Spark (GB10), 2026-11-18
 
 Stack: torch 2.14.1+cu130, TRL 1.18.1, transformers 5.x, peft, Qwen2.5-0.5B-Instruct (bf16), LoRA r=8,
-G=4, 16 completions/step, max 96 new tokens, lr 2e-5, β=0. Rewards: reference solution.
+G=4, 16 completions/step, max 96 new tokens, lr 2e-5, β=0. Rewards: `farm_grpo.rewards.REWARD_FUNCS`.
 
 ## Timing
 | What | Measured |

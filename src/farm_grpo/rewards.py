@@ -1,6 +1,4 @@
-"""STUDENT EXERCISE: reward functions for GRPO.
-
-Implement the three TODO functions below (or the copies in Section 5 of the notebook).
+"""Reward functions for GRPO, plus a small test harness (check_rewards).
 
 Teaching reward (max = 1.0):
     format   valid JSON with {"tool", "arguments"} structure   +0.1
@@ -8,41 +6,65 @@ Teaching reward (max = 1.0):
     args     correct tool AND all arguments match             +0.7
     invalid  cannot parse / validate                          -0.2
 
-Useful helpers:
-    completion_text(c)       -> str            (TRL completions can be chat dicts)
-    parse_tool_call(text)    -> ParsedCall     (.has_schema, .tool, .arguments, .norm_args)
-    normalize_args(tool, d)  -> canonical dict or None
-
-Run `check_rewards(format_reward, tool_reward, args_reward)` to test your implementation.
+TRL calls every reward function with:
+    completions  : list of completions (conversational: [{"role": "assistant", "content": ...}])
+    **dataset columns, here expected_tool: list[str], expected_args: list[str (JSON)]
+and sums the returned lists (optionally weighted by GRPOConfig.reward_weights).
 """
 
 from __future__ import annotations
 
-import json  # noqa: F401  (you will need it for expected_args)
+import json
 
-from .environment import normalize_args  # noqa: F401
-from .parsing import completion_text, parse_tool_call  # noqa: F401
+from .environment import normalize_args, normalize_value
+from .parsing import completion_text, parse_tool_call
 
 
 def format_reward(completions, **kwargs) -> list[float]:
-    """+0.1 for a clean {"tool", "arguments"} JSON object, -0.2 otherwise."""
-    # TODO(student)
-    raise NotImplementedError
+    """+0.1 for one clean JSON object with keys {tool, arguments}; -0.2 otherwise."""
+    rewards = []
+    for c in completions:
+        pc = parse_tool_call(completion_text(c))
+        rewards.append(0.1 if pc.has_schema else -0.2)
+    return rewards
 
 
 def tool_reward(completions, expected_tool, **kwargs) -> list[float]:
-    """+0.2 when the selected tool equals expected_tool, else 0."""
-    # TODO(student)
-    raise NotImplementedError
+    """+0.2 if the selected tool equals the expected tool."""
+    rewards = []
+    for c, tool in zip(completions, expected_tool):
+        pc = parse_tool_call(completion_text(c))
+        rewards.append(0.2 if pc.has_schema and pc.tool == tool else 0.0)
+    return rewards
 
 
 def args_reward(completions, expected_tool, expected_args, **kwargs) -> list[float]:
-    """+0.7 when the tool is right AND all normalised arguments match, else 0.
+    """+0.7 if the tool is right and every (normalised) argument matches."""
+    rewards = []
+    for c, tool, args_json in zip(completions, expected_tool, expected_args):
+        pc = parse_tool_call(completion_text(c))
+        target = normalize_args(tool, json.loads(args_json))
+        ok = pc.has_schema and pc.tool == tool and pc.norm_args is not None and pc.norm_args == target
+        rewards.append(0.7 if ok else 0.0)
+    return rewards
 
-    expected_args is a list of JSON *strings*. Use json.loads(...).
-    """
-    # TODO(student)
-    raise NotImplementedError
+
+def args_partial_reward(completions, expected_tool, expected_args, **kwargs) -> list[float]:
+    """Optional shaped variant: 0.7 * fraction of matching arguments (denser signal)."""
+    rewards = []
+    for c, tool, args_json in zip(completions, expected_tool, expected_args):
+        pc = parse_tool_call(completion_text(c))
+        target = normalize_args(tool, json.loads(args_json))
+        if not (pc.has_schema and pc.tool == tool and isinstance(pc.arguments, dict)):
+            rewards.append(0.0)
+            continue
+        hits = sum(normalize_value(k, pc.arguments.get(k)) == v for k, v in target.items())
+        extra = len(set(pc.arguments) - set(target))
+        rewards.append(0.7 * max(hits - extra, 0) / len(target))
+    return rewards
+
+
+REWARD_FUNCS = [format_reward, tool_reward, args_reward]
 
 
 # --------------------------------------------------------------------------------------
@@ -90,16 +112,3 @@ def check_rewards(*funcs, verbose: bool = True) -> bool:
     if verbose:
         print("\nAll tests passed!" if ok_all else "\nSome tests failed.")
     return ok_all
-
-
-def get_reward_funcs(prefer_student: bool = True):
-    """Return the student's functions if implemented, else the reference solution."""
-    if prefer_student:
-        try:
-            check_rewards(format_reward, tool_reward, args_reward, verbose=False)
-            return [format_reward, tool_reward, args_reward]
-        except NotImplementedError:
-            print("[rewards] student functions not implemented yet -> using reference solution")
-    from solutions.rewards_solution import REWARD_FUNCS
-
-    return REWARD_FUNCS

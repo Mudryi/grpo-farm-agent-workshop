@@ -39,7 +39,7 @@ uv run jupyter lab --no-browser --port 8888
 # from your laptop:  ssh -p 2324 -L 8888:localhost:8888 mudryi@146.120.190.241  -> http://localhost:8888
 ```
 
-Open `workshop.ipynb`. The only switch is in the **2nd code cell**:
+Open `workshop.ipynb` (English) or `workshop_uk.ipynb` (Ukrainian, see section G). The only switch is in the **2nd code cell**:
 
 | `TRAINING_MODE` | What happens | Use when |
 |---|---|---|
@@ -57,14 +57,14 @@ Open `workshop.ipynb`. The only switch is in the **2nd code cell**:
 | 25–33 | **2 Environment** | Run all | Robot table: Barn A **07:00 planned → 07:18 actual**; invalid call returns an error; scripted 2-call oracle |
 | 33–40 | **3 Dataset** | Run all | Template-family split (5 train / 1 val / 2 test), barn D test-only, leakage asserts ✔. *By now both runs are finished.* |
 | 40–47 | **4 Baseline + signal** | Run all | Base ≈ **74 %** task success; weak spot = day-part questions. Signal check: ~40 % zero-std groups → the rest give GRPO a signal |
-| 47–62 | **5 Rewards** | Students fill the TODO cell, run `check_rewards` → 8 PASS | If they are not done, the next cell falls back to the reference solution automatically |
-| 62–70 | **6 Results** | Run all (no waiting) | Training curves: reward ↑, `frac_reward_zero_std`, held-out 87.5 → ~92.5 %. Then the 500-step prepared run curves |
-| 70–82 | **7 Evaluation** | Run all | Table: base **74 %** → live **~89 %** (varies 87–97). Error/family tables. **Story:** 500 steps is no better (fails `robot_distract2`: picks the schedule tool when "schedule" appears) and validation didn't catch it |
+| 47–62 | **5 Rewards** | Walk through the implemented reward functions line by line, run `check_rewards` → 8 PASS | Ask the room *before* showing each function: what should this case score? Then the sanity-check cell scores real base-model samples |
+| 62–70 | **6 Results** | Run all (no waiting) | Training curves + printed summary: reward ↑, `frac_reward_zero_std` ↑ (signal used up), held-out 87.5 → ~92.5 %. The note under the plot says what to read |
+| 70–82 | **7 Evaluation** | Run all | Table: base **74 %** → after GRPO **~90 %** (varies 87–97). Gain is in *arguments*, not format. Error/family tables: which phrasings still fail |
 | 82–90 | **8.1 Reward hacking** | Run (already trained) | Training reward climbs to **1.0** while task success → **0 %**. Show the completions with stuffed arguments |
 | 90–95 | **8.2 Multi-step agent** | Run (~30 s) | Both models **fail** the 2-tool "was the robot late?" question. Single-step training doesn't transfer, which motivates outcome rewards / TRL `environment_factory` |
-| 95–100 | Wrap-up | Last markdown cell | 4 take-aways. Buffer for questions |
+| 95–100 | **9 Metrics** + wrap-up | Run the summary cell, last markdown cell | All metrics in one place (saved to `outputs/`). 4 take-aways. Buffer for questions |
 
-**If you run late**, cut in this order: 8.2 (say it in one sentence) → 3 (show only the family table) → 6.3 prepared curves.
+**If you run late**, cut in this order: 8.2 (say it in one sentence) → 3 (show only the family table) → 7.1 fixed/broken tables.
 
 ## D. Measured on the 3090 (2026-11-19)
 
@@ -74,11 +74,13 @@ Open `workshop.ipynb`. The only switch is in the **2nd code cell**:
 | Whole notebook, background mode | **6.2 min** |
 | Whole notebook, pretrained mode | **49 s** |
 
-| Test (80 prompts) | Before | Live (retrained) | Live (saved best) | Prepared 500 | Hack |
-|---|---|---|---|---|---|
-| Task success % | 73.8 | 87.5–88.8 | 97.5 | 87.5 | 0 |
+| Test (80 prompts) | Before | After GRPO (retrained runs) | After GRPO (saved best) | Hack |
+|---|---|---|---|---|
+| Task success %, English | 73.8 | 87.5–92.5 | 97.5 | 0 |
+| Task success %, Ukrainian | 37.5 | 60.0 | 60.0 | 0 |
 
-The live run is retrained in class, so expect **87–97 %**. The story holds either way.
+The live run is retrained in class, so expect **87–97 %** (English). The story holds either way.
+The 500-step "prepared" run is no longer part of the notebooks (it was confusing); `python -m farm_grpo.train --steps 500` still works for your own experiments.
 
 ## E. If something goes wrong
 
@@ -96,6 +98,22 @@ Restore the best saved checkpoints into `outputs/` any time:
 ## F. Student handout
 
 ```bash
-uv run python scripts/make_student_copy.py   # -> dist/student/ (no solutions, no checkpoints, no outputs)
+uv run python scripts/make_student_copy.py   # -> dist/student/ (both notebooks, no checkpoints, no outputs)
 ```
+The notebooks are student-ready: no TODO cells and no timings; the reward functions are implemented in Section 5.
 Students without a GPU just follow your screen. With a GPU, they use `"inline"` mode.
+
+## G. Ukrainian version (`workshop_uk.ipynb`)
+
+Same sections, same timeline, same **English** text. Only the dataset is Ukrainian. `LANG = "uk"` in the first code cell:
+* the dataset **requests** are Ukrainian (same template families and split; tool names, system prompt and labels stay English/ISO);
+* the background runs train on Ukrainian requests and write to `outputs/uk/` (logs: `outputs/uk/logs/`);
+* all metrics are saved separately: `outputs/uk/results.json`, `results_by_family.csv`, `agent_results.json`. Summary in `RESULTS_UK.md`.
+
+Day before:
+```bash
+uv run jupyter nbconvert --to notebook --execute workshop_uk.ipynb --output workshop_uk_executed.ipynb   # ~6 min
+mkdir -p data/uk/checkpoints && for r in live_run hack_many_args; do cp -r outputs/uk/$r data/uk/checkpoints/; done
+```
+The last line enables `TRAINING_MODE = "pretrained"` for the Ukrainian notebook.
+Do not start the English and Ukrainian background runs at the same time (4 processes on one GPU roughly doubles the time).

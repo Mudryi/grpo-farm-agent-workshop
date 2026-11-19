@@ -50,8 +50,9 @@ class AgentTask:
 
     def grade(self, final_answer: str | None, tools_called: list[str]) -> dict:
         ans = (final_answer or "").lower()
-        said_yes = bool(re.search(r"\byes\b|\blate\b|\bdelayed\b|\bmissed\b", ans)) and not re.search(r"\bnot late\b|\bon time\b", ans)
-        said_no = bool(re.search(r"\bno\b|\bon time\b|\bnot late\b", ans)) and not said_yes
+        negated = re.search(r"\bnot late\b|\bon time\b|не запізн|не затрим|вчасно", ans)
+        said_yes = bool(re.search(r"\byes\b|\blate\b|\bdelayed\b|\bmissed\b|\bтак\b|запізн|затрим|пропуст", ans)) and not negated
+        said_no = bool(re.search(r"\bno\b|\bon time\b|\bnot late\b|\bні\b|вчасно|не запізн|не затрим", ans)) and not said_yes
         yes_no_ok = said_yes if self.truth["late"] else said_no
         minutes_ok = True
         if self.truth.get("delay_min") and self.truth["late"]:
@@ -62,12 +63,18 @@ class AgentTask:
                 "success": yes_no_ok and minutes_ok and tools_ok}
 
 
-def make_tasks(world: FarmWorld) -> list[AgentTask]:
+QUESTION = {
+    "en": "Was the feed-pushing robot late for the first feeding in Barn {barn} this morning? If yes, by how many minutes?",
+    "uk": "Чи запізнився робот-підштовхувач корму на перше годування в корівнику {barn} сьогодні вранці? "
+          "Якщо так, то на скільки хвилин?",
+}
+
+
+def make_tasks(world: FarmWorld, lang: str = "en") -> list[AgentTask]:
     tasks = []
     for barn in ["A", "B", "C", "D"]:
         tasks.append(AgentTask(
-            question=f"Was the feed-pushing robot late for the first feeding in Barn {barn} this morning? "
-                     f"If yes, by how many minutes?",
+            question=QUESTION[lang].format(barn=barn),
             required_tools={"get_feeding_schedule", "get_robot_events"},
             truth=robot_lateness_truth(world, barn),
         ))

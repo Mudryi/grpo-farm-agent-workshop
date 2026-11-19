@@ -17,8 +17,24 @@ outputs/*/*.jinja
 outputs/*/README.md
 outputs/*/adapter_config.json
 outputs/*/training_args.bin
+outputs/uk/*/*.safetensors
+outputs/uk/*/tokenizer*
+outputs/uk/*/*.jinja
+outputs/uk/*/README.md
+outputs/uk/*/adapter_config.json
+outputs/uk/*/training_args.bin
+outputs/uk/logs/
 
 # moved from the DGX Spark: original checkpoints + Claude chat transcript (keep local)
 data/checkpoints/
+data/uk/checkpoints/
 data/chat_history/
 outputs/logs/
+!outputs/uk/results.json
+!outputs/uk/results_by_family.csv
+!outputs/uk/agent_results.json
+!outputs/uk/*/log_history.json
+!outputs/uk/*/heldout_history.json
+!outputs/uk/*/timing.json
+!outputs/uk/*/
+outputs/uk/logs/

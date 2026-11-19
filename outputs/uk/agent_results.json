@@ -1,0 +1,12 @@
+{
+ "Before GRPO":{
+  "answer_correct":0.0,
+  "used_required_tools":0.0,
+  "success":0.0
+ },
+ "After GRPO":{
+  "answer_correct":25.0,
+  "used_required_tools":0.0,
+  "success":0.0
+ }
+}

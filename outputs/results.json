@@ -7,20 +7,20 @@
   "Unnecessary tool calls (%)": 0.0,
   "Mean reward": 0.784
  },
- "After GRPO (live)": {
+ "After GRPO": {
   "Valid tool-call JSON (%)": 100.0,
-  "Correct tool selection (%)": 100.0,
-  "Correct arguments (%)": 97.5,
-  "Overall task success (%)": 97.5,
+  "Correct tool selection (%)": 93.8,
+  "Correct arguments (%)": 92.5,
+  "Overall task success (%)": 92.5,
   "Unnecessary tool calls (%)": 0.0,
-  "Mean reward": 0.982
+  "Mean reward": 0.935
  },
- "After GRPO (prepared)": {
-  "Valid tool-call JSON (%)": 100.0,
-  "Correct tool selection (%)": 87.5,
-  "Correct arguments (%)": 87.5,
-  "Overall task success (%)": 87.5,
-  "Unnecessary tool calls (%)": 0.0,
-  "Mean reward": 0.887
+ "Hacked (many_args)": {
+  "Valid tool-call JSON (%)": 1.2,
+  "Correct tool selection (%)": 1.2,
+  "Correct arguments (%)": 0.0,
+  "Overall task success (%)": 0.0,
+  "Unnecessary tool calls (%)": 26.2,
+  "Mean reward": -0.194
  }
 }
