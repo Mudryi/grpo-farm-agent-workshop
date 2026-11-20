@@ -19,7 +19,6 @@ class WorkshopConfig:
     # ---- model -------------------------------------------------------------
     model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"
     seed: int = 42
-    lang: str = "en"                   # language of the user requests: "en" or "uk"
 
     # ---- dataset sizes (teaching values) ----------------------------------
     n_train: int = 240
@@ -44,8 +43,7 @@ class WorkshopConfig:
     learning_rate: float = 2e-5
     beta: float = 0.0                  # KL coefficient (0 = no reference model -> faster)
     temperature: float = 1.0           # sampling temperature during rollouts
-    live_max_steps: int = 100          # live run in class (~5 min on DGX Spark @ ~3 s/step)
-    prepared_max_steps: int = 500     # "prepared" checkpoint trained before class (~25 min)
+    live_max_steps: int = 100          # live run in class (~5 min @ ~3 s/step)
     logging_steps: int = 1
 
     # ---- evaluation -------------------------------------------------------------
@@ -60,10 +58,6 @@ class WorkshopConfig:
     def live_run_dir(self) -> Path:
         return self.output_dir / "live_run"
 
-    @property
-    def prepared_run_dir(self) -> Path:
-        return self.output_dir / "prepared_run"
-
     def to_dict(self) -> dict:
         d = asdict(self)
         d["data_dir"] = str(self.data_dir)
@@ -71,17 +65,8 @@ class WorkshopConfig:
         return d
 
 
-LANGS = ("en", "uk")
-
-
-def get_config(lang: str = "en", **overrides) -> WorkshopConfig:
-    """lang="uk" keeps data and outputs separate: data/uk/, outputs/uk/ (English files untouched)."""
-    if lang not in LANGS:
-        raise ValueError(f"lang must be one of {LANGS}")
-    if lang != "en":
-        overrides.setdefault("data_dir", DATA_DIR / lang)
-        overrides.setdefault("output_dir", OUTPUT_DIR / lang)
-    cfg = WorkshopConfig(lang=lang, **overrides)
+def get_config(**overrides) -> WorkshopConfig:
+    cfg = WorkshopConfig(**overrides)
     if os.environ.get("FARM_GRPO_MODEL"):
         cfg.model_id = os.environ["FARM_GRPO_MODEL"]
     return cfg

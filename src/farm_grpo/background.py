@@ -1,11 +1,11 @@
-"""Run GRPO trainings as background processes, so the lecture can continue while they train.
+"""Run the two GRPO trainings as background processes, so the lecture continues while they train.
 
     from farm_grpo.background import start_runs, status, wait_for
     start_runs(["live", "hack"])     # Section 0: kick off both runs (returns immediately)
     status()                          # any time: step, held-out success, done / failed
     wait_for(["live"])                # Section 6: block (with progress prints) until finished
 
-Every function takes lang="en" | "uk". Ukrainian runs live under outputs/uk/ (separate logs too).
+Each run is a separate process: `python -m farm_grpo.background <name>`.
 """
 
 from __future__ import annotations
@@ -15,107 +15,108 @@ import re
 import subprocess
 import sys
 import time
-from pathlib import Path
 
-from .config import PROJECT_ROOT, get_config
+from .config import OUTPUT_DIR, PROJECT_ROOT
 
-# name -> (output sub-directory, CLI arguments for `python -m farm_grpo.train`)
+LOG_DIR = OUTPUT_DIR / "logs"
+
+# name -> output sub-directory and training settings (the only difference between the runs is the reward)
 RUNS = {
-    "live": ("live_run", ["--steps", "100", "--heldout-every", "25"]),
-    "hack": ("hack_many_args", ["--steps", "60", "--reward", "many_args", "--lr", "5e-5", "--heldout-every", "20"]),
+    "live": dict(out="live_run", reward="good", steps=100, heldout_every=25),
+    "hack": dict(out="hack_many_args", reward="many_args", steps=60, heldout_every=20, learning_rate=5e-5),
 }
-
-
-def _log_dir(lang: str) -> Path:
-    return get_config(lang=lang).output_dir / "logs"
+DONE = "TRAINING DONE"
 
 _STEP_RE = re.compile(r"(\d+)/(\d+) \[")
 _HELD_RE = re.compile(r"held-out @ step (\d+)\] success=([\d.]+)%")
 
 
-def _log(name: str, lang: str) -> Path:
-    return _log_dir(lang) / f"{name}.log"
-
-
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
-
-
-def _running_pid(name: str, lang: str) -> int | None:
-    pid_file = _log_dir(lang) / f"{name}.pid"
+def _running_pid(name: str) -> int | None:
+    pid_file = LOG_DIR / f"{name}.pid"
     if pid_file.exists():
         pid = int(pid_file.read_text())
-        if _pid_alive(pid):
+        try:
+            os.kill(pid, 0)
             return pid
+        except OSError:
+            pass
     return None
 
 
-def start_runs(names=("live", "hack"), lang: str = "en") -> None:
+def start_runs(names=("live", "hack")) -> None:
     """Launch each run as a separate process (a run that is already going is not restarted)."""
-    log_dir = _log_dir(lang)
-    log_dir.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     for name in names:
-        if _running_pid(name, lang):
-            print(f"[{name}] already running (pid {_running_pid(name, lang)})")
+        if pid := _running_pid(name):
+            print(f"[{name}] already running (pid {pid})")
             continue
-        sub, args = RUNS[name]
-        out_dir = get_config(lang=lang).output_dir / sub
-        cmd = [sys.executable, "-m", "farm_grpo.train", "--lang", lang, "--output", str(out_dir), *args]
-        with open(_log(name, lang), "w") as log:
-            p = subprocess.Popen(cmd, cwd=PROJECT_ROOT, stdout=log, stderr=subprocess.STDOUT,
-                                 env={**os.environ, "PYTHONUNBUFFERED": "1", "TQDM_MININTERVAL": "5"},
-                                 start_new_session=True)
-        (log_dir / f"{name}.pid").write_text(str(p.pid))
-        print(f"[{name}] started pid {p.pid}  ->  {out_dir.relative_to(PROJECT_ROOT)}  "
-              f"(log: {_log(name, lang).relative_to(PROJECT_ROOT)})")
+        with open(LOG_DIR / f"{name}.log", "w") as log:
+            p = subprocess.Popen([sys.executable, "-m", "farm_grpo.background", name], cwd=PROJECT_ROOT,
+                                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
+                                 env={**os.environ, "PYTHONUNBUFFERED": "1", "TQDM_MININTERVAL": "5"})
+        (LOG_DIR / f"{name}.pid").write_text(str(p.pid))
+        print(f"[{name}] started pid {p.pid} -> outputs/{RUNS[name]['out']}  (log: outputs/logs/{name}.log)")
 
 
-def run_status(name: str, lang: str = "en") -> dict:
-    log = _log(name, lang)
+def run_status(name: str) -> dict:
+    log, pid = LOG_DIR / f"{name}.log", LOG_DIR / f"{name}.pid"
     if not log.exists():
         return {"run": name, "state": "not started"}
     text = log.read_text(errors="replace")
-    steps = _STEP_RE.findall(text)
-    held = _HELD_RE.findall(text)
-    if "timing:" in text:
+    if DONE in text:
         state = "done"
     elif "Traceback" in text:
         state = "FAILED"
-    elif _running_pid(name, lang):
-        state = "running"
     else:
-        state = "stopped"
-    step, total = (int(steps[-1][0]), int(steps[-1][1])) if steps else (0, None)
-    return {"run": name, "state": state, "step": f"{step}/{total or '?'}",
-            "held-out success %": [float(s) for _, s in held],
-            "minutes since start": round((time.time() - (_log_dir(lang) / f"{name}.pid").stat().st_mtime) / 60, 1)}
+        state = "running" if _running_pid(name) else "stopped"
+    steps = _STEP_RE.findall(text)
+    return {"run": name, "state": state,
+            "step": f"{steps[-1][0]}/{steps[-1][1]}" if steps else "0/?",
+            "held-out success %": [float(s) for _, s in _HELD_RE.findall(text)],
+            "minutes since start": round((time.time() - pid.stat().st_mtime) / 60, 1) if pid.exists() else None}
 
 
-def status(names=tuple(RUNS), lang: str = "en"):
+def status(names=tuple(RUNS)):
     import pandas as pd
 
-    return pd.DataFrame([run_status(n, lang) for n in names]).set_index("run")
+    return pd.DataFrame([run_status(n) for n in names]).set_index("run")
 
 
-def wait_for(names=("live",), poll_s: int = 15, lang: str = "en") -> None:
+def wait_for(names=("live",), poll_s: int = 15) -> None:
     """Block until every run is done; print progress. Raises if a run failed."""
     last = None
     while True:
-        st = [run_status(n, lang) for n in names]
+        st = [run_status(n) for n in names]
         line = "  |  ".join(f"{s['run']}: {s['state']} {s.get('step', '')} "
                             f"held-out={s.get('held-out success %', [])}" for s in st)
         if line != last:
             print(time.strftime("%H:%M:%S"), line, flush=True)
             last = line
-        if any(s["state"] in ("FAILED", "stopped") for s in st):
-            bad = [s["run"] for s in st if s["state"] in ("FAILED", "stopped")]
-            raise RuntimeError(f"run(s) {bad} did not finish; see {_log_dir(lang)}/<run>.log")
+        if bad := [s["run"] for s in st if s["state"] in ("FAILED", "stopped", "not started")]:
+            raise RuntimeError(f"run(s) {bad} did not finish; see {LOG_DIR}/<run>.log (call start_runs() first)")
         if all(s["state"] == "done" for s in st):
             return
-        if any(s["state"] == "not started" for s in st):
-            raise RuntimeError("run not started; call start_runs() first or use TRAINING_MODE='pretrained'")
         time.sleep(poll_s)
+
+
+def _train(name: str) -> None:
+    from .config import get_config
+    from .dataset import generate_records, save_records, to_hf_dataset
+    from .rewards import REWARD_FUNCS
+    from .rewards_bad import many_args_reward
+    from .train import train_grpo
+
+    run = dict(RUNS[name])
+    cfg = get_config()
+    records = generate_records(cfg.n_train, cfg.n_val, cfg.n_test, cfg.seed)
+    if not (cfg.data_dir / "train.jsonl").exists():  # don't rewrite while the notebook reads it
+        save_records(records, cfg.data_dir)
+    reward_funcs = REWARD_FUNCS if run.pop("reward") == "good" else [many_args_reward]
+    train_grpo(cfg, to_hf_dataset(records["train"]), reward_funcs, cfg.output_dir / run.pop("out"),
+               max_steps=run.pop("steps"), heldout_records=records["val"], heldout_every=run.pop("heldout_every"),
+               **run)
+    print(DONE)
+
+
+if __name__ == "__main__":
+    _train(sys.argv[1])

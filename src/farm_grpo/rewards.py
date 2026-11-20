@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 
-from .environment import normalize_args, normalize_value
+from .environment import normalize_args
 from .parsing import completion_text, parse_tool_call
 
 
@@ -46,21 +46,6 @@ def args_reward(completions, expected_tool, expected_args, **kwargs) -> list[flo
         target = normalize_args(tool, json.loads(args_json))
         ok = pc.has_schema and pc.tool == tool and pc.norm_args is not None and pc.norm_args == target
         rewards.append(0.7 if ok else 0.0)
-    return rewards
-
-
-def args_partial_reward(completions, expected_tool, expected_args, **kwargs) -> list[float]:
-    """Optional shaped variant: 0.7 * fraction of matching arguments (denser signal)."""
-    rewards = []
-    for c, tool, args_json in zip(completions, expected_tool, expected_args):
-        pc = parse_tool_call(completion_text(c))
-        target = normalize_args(tool, json.loads(args_json))
-        if not (pc.has_schema and pc.tool == tool and isinstance(pc.arguments, dict)):
-            rewards.append(0.0)
-            continue
-        hits = sum(normalize_value(k, pc.arguments.get(k)) == v for k, v in target.items())
-        extra = len(set(pc.arguments) - set(target))
-        rewards.append(0.7 * max(hits - extra, 0) / len(target))
     return rewards
 
 

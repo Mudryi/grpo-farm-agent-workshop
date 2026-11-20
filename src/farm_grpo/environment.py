@@ -151,12 +151,6 @@ _NORMALIZERS = {
 }
 
 
-def normalize_value(key: str, value: Any):
-    """Canonical form of one argument value (None if unknown key / invalid value)."""
-    fn = _NORMALIZERS.get(key)
-    return fn(value) if fn else None
-
-
 def normalize_args(tool: str, args: dict) -> dict | None:
     """Return canonical arguments, or None if names/values are invalid for `tool`."""
     if tool not in TOOL_SPECS or not isinstance(args, dict):

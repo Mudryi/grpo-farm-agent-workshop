@@ -1,47 +1,20 @@
 """GRPO + LoRA training with Hugging Face TRL.
 
-Notebook:   trainer, timer = train_grpo(cfg, train_ds, reward_funcs, output_dir, max_steps=20)
-CLI (prepared checkpoint before class):
-    uv run python -m farm_grpo.train --steps 300 --output outputs/prepared_run
-    uv run python -m farm_grpo.train --steps 60 --reward format_only --output outputs/hack_format_only
-    uv run python -m farm_grpo.train --lang uk --steps 500          # Ukrainian requests -> outputs/uk/prepared_run
+    trainer = train_grpo(cfg, train_ds, reward_funcs, output_dir, max_steps=100, heldout_records=records["val"])
+
+In class the runs start as background processes, see background.py.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
-import time
 from pathlib import Path
 
 import torch
 from transformers import TrainerCallback
 
-from .config import WorkshopConfig, get_config
+from .config import WorkshopConfig
 from .evaluate import best_dtype
-
-
-class StepTimer(TrainerCallback):
-    """Wall-clock seconds per optimizer step (includes rollout generation)."""
-
-    def __init__(self):
-        self.times: list[float] = []
-        self._t0 = None
-
-    def on_step_begin(self, args, state, control, **kw):
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        self._t0 = time.perf_counter()
-
-    def on_step_end(self, args, state, control, **kw):
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        self.times.append(time.perf_counter() - self._t0)
-
-    def summary(self, warmup: int = 2) -> dict:
-        t = self.times[warmup:] or self.times
-        return {"steps": len(self.times), "sec_per_step_after_warmup": round(sum(t) / max(len(t), 1), 2),
-                "first_steps": [round(x, 2) for x in self.times[:warmup]]}
 
 
 class HeldOutEvalCallback(TrainerCallback):
@@ -106,20 +79,14 @@ def build_lora_config(cfg: WorkshopConfig):
 
 
 def train_grpo(cfg: WorkshopConfig, train_dataset, reward_funcs, output_dir: str | Path,
-               max_steps: int, heldout_records=None, heldout_every: int = 25, save: bool = True,
-               **grpo_overrides):
+               max_steps: int, heldout_records, heldout_every: int = 25, **grpo_overrides):
+    """Train, then save the LoRA adapter, log_history.json and heldout_history.json to output_dir."""
     from transformers import AutoTokenizer
     from trl import GRPOTrainer
 
     output_dir = Path(output_dir)
     tok = AutoTokenizer.from_pretrained(cfg.model_id)
-    timer = StepTimer()
-    callbacks = [timer]
-    heldout = None
-    if heldout_records:
-        heldout = HeldOutEvalCallback(heldout_records, tok, every=heldout_every)
-        callbacks.append(heldout)
-
+    heldout = HeldOutEvalCallback(heldout_records, tok, every=heldout_every)
     trainer = GRPOTrainer(
         model=cfg.model_id,
         reward_funcs=reward_funcs,
@@ -127,54 +94,12 @@ def train_grpo(cfg: WorkshopConfig, train_dataset, reward_funcs, output_dir: str
         train_dataset=train_dataset,
         processing_class=tok,
         peft_config=build_lora_config(cfg),
-        callbacks=callbacks,
+        callbacks=[heldout],
     )
     trainer.train()
 
-    if save:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        trainer.save_model(str(output_dir))
-        (output_dir / "log_history.json").write_text(json.dumps(trainer.state.log_history, indent=1))
-        (output_dir / "timing.json").write_text(json.dumps(timer.summary(), indent=1))
-        if heldout:
-            (output_dir / "heldout_history.json").write_text(json.dumps(heldout.history, indent=1))
-    trainer.heldout_history = heldout.history if heldout else []
-    return trainer, timer
-
-
-def main():
-    from .dataset import generate_records, save_records, to_hf_dataset
-    from .rewards_bad import BAD_REWARDS
-
-    p = argparse.ArgumentParser()
-    p.add_argument("--steps", type=int, default=None)
-    p.add_argument("--output", default=None)
-    p.add_argument("--reward", default="good", choices=["good", "partial", *BAD_REWARDS])
-    p.add_argument("--lr", type=float, default=None)
-    p.add_argument("--heldout-every", type=int, default=25)
-    p.add_argument("--lang", default="en", choices=["en", "uk"], help="language of the user requests")
-    a = p.parse_args()
-
-    cfg = get_config(lang=a.lang)
-    if a.lr:
-        cfg.learning_rate = a.lr
-    records = generate_records(cfg.n_train, cfg.n_val, cfg.n_test, cfg.seed, lang=cfg.lang)
-    if not (cfg.data_dir / "train.jsonl").exists():  # don't rewrite while other runs/notebook read it
-        save_records(records, cfg.data_dir)
-
-    if a.reward == "good":
-        from .rewards import REWARD_FUNCS as funcs
-    elif a.reward == "partial":
-        from .rewards import args_partial_reward, format_reward, tool_reward
-        funcs = [format_reward, tool_reward, args_partial_reward]
-    else:
-        funcs = BAD_REWARDS[a.reward]
-
-    out = a.output or str(cfg.prepared_run_dir if a.reward == "good" else cfg.output_dir / f"hack_{a.reward}")
-    _, timer = train_grpo(cfg, to_hf_dataset(records["train"]), funcs, out, a.steps or cfg.prepared_max_steps,
-                          heldout_records=records["val"], heldout_every=a.heldout_every)
-    print("timing:", timer.summary())
-
-
-if __name__ == "__main__":
-    main()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    trainer.save_model(str(output_dir))
+    (output_dir / "log_history.json").write_text(json.dumps(trainer.state.log_history, indent=1))
+    (output_dir / "heldout_history.json").write_text(json.dumps(heldout.history, indent=1))
+    return trainer

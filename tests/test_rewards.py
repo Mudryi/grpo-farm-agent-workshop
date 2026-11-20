@@ -2,7 +2,7 @@ import json
 
 from farm_grpo.evaluate import score_completion
 from farm_grpo.rewards import REWARD_FUNCS, TEST_CASES, check_rewards
-from farm_grpo.rewards_bad import keyword_reward
+from farm_grpo.rewards_bad import many_args_reward
 
 
 def test_solution_passes_harness():
@@ -20,6 +20,7 @@ def test_score_completion_matches_solution():
         assert abs(score_completion(text, "get_robot_events", args)["reward"] - want) < 1e-6
 
 
-def test_keyword_reward_is_hackable():
-    hack = [[{"role": "assistant", "content": "get_robot_events get_mixer_events get_feeding_schedule"}]]
-    assert keyword_reward(hack, expected_tool=["get_robot_events"]) == [1.0]
+def test_many_args_reward_is_hackable():
+    stuffed = '{"tool": "get_robot_events", "arguments": {"a": 1, "b": 2, "c": 3, "d": 4}}'
+    assert many_args_reward([[{"role": "assistant", "content": stuffed}]]) == [1.0]
+    assert score_completion(stuffed, "get_robot_events", json.dumps({"barn_id": "A"}))["reward"] < 0.5

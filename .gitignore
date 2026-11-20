@@ -4,37 +4,15 @@ __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
 dist/
-# model checkpoints (~28 MB each) and logs: regenerate locally
+# model checkpoints (~28 MB each) and logs: regenerate locally; keep only the json logs and results
 outputs/*
 !outputs/results.json
+!outputs/*/
+outputs/*/*
 !outputs/*/log_history.json
 !outputs/*/heldout_history.json
-!outputs/*/timing.json
-!outputs/*/
-outputs/*/*.safetensors
-outputs/*/tokenizer*
-outputs/*/*.jinja
-outputs/*/README.md
-outputs/*/adapter_config.json
-outputs/*/training_args.bin
-outputs/uk/*/*.safetensors
-outputs/uk/*/tokenizer*
-outputs/uk/*/*.jinja
-outputs/uk/*/README.md
-outputs/uk/*/adapter_config.json
-outputs/uk/*/training_args.bin
-outputs/uk/logs/
-
-# moved from the DGX Spark: original checkpoints + Claude chat transcript (keep local)
-data/checkpoints/
-data/uk/checkpoints/
-data/chat_history/
 outputs/logs/
-!outputs/uk/results.json
-!outputs/uk/results_by_family.csv
-!outputs/uk/agent_results.json
-!outputs/uk/*/log_history.json
-!outputs/uk/*/heldout_history.json
-!outputs/uk/*/timing.json
-!outputs/uk/*/
-outputs/uk/logs/
+
+# local only: saved checkpoints + Claude chat transcript
+data/checkpoints/
+data/chat_history/

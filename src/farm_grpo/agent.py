@@ -63,18 +63,15 @@ class AgentTask:
                 "success": yes_no_ok and minutes_ok and tools_ok}
 
 
-QUESTION = {
-    "en": "Was the feed-pushing robot late for the first feeding in Barn {barn} this morning? If yes, by how many minutes?",
-    "uk": "Чи запізнився робот-підштовхувач корму на перше годування в корівнику {barn} сьогодні вранці? "
-          "Якщо так, то на скільки хвилин?",
-}
+QUESTION = ("Чи запізнився робот-підштовхувач корму на перше годування в корівнику {barn} сьогодні вранці? "
+            "Якщо так, то на скільки хвилин?")
 
 
-def make_tasks(world: FarmWorld, lang: str = "en") -> list[AgentTask]:
+def make_tasks(world: FarmWorld) -> list[AgentTask]:
     tasks = []
     for barn in ["A", "B", "C", "D"]:
         tasks.append(AgentTask(
-            question=QUESTION[lang].format(barn=barn),
+            question=QUESTION.format(barn=barn),
             required_tools={"get_feeding_schedule", "get_robot_events"},
             truth=robot_lateness_truth(world, barn),
         ))
