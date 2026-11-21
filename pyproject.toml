@@ -5,11 +5,11 @@ description = "Workshop: training Qwen with GRPO to pick farm-operations tools (
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "torch>=2.9",
-    "transformers",
+    "transformers>=5.23,<6",
     "datasets",
     "accelerate",
-    "peft",
-    "trl",
+    "peft>=0.21,<1",
+    "trl==1.18.1",               # GRPOTrainer API changes between releases
     "safetensors",
     "huggingface-hub",
     "numpy",
@@ -28,8 +28,8 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/farm_grpo"]
 
-# GB10 (DGX Spark) is aarch64 + CUDA 13 -> PyTorch cu130 wheels.
-# On Colab / x86 just `pip install -e .` (the default PyPI torch is fine).
+# uv installs PyTorch CUDA 13 wheels (needs NVIDIA driver >= 580).
+# Older driver: change the url below to .../whl/cu128, or just `pip install -e .` (default PyPI torch).
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }
 

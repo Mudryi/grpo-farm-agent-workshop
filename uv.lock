@@ -486,12 +486,12 @@ requires-dist = [
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
-    { name = "peft" },
+    { name = "peft", specifier = ">=0.21,<1" },
     { name = "safetensors" },
     { name = "torch", specifier = ">=2.9", index = "https://download.pytorch.org/whl/cu130" },
     { name = "tqdm" },
-    { name = "transformers" },
-    { name = "trl" },
+    { name = "transformers", specifier = ">=5.23,<6" },
+    { name = "trl", specifier = "==1.18.1" },
 ]
 
 [package.metadata.requires-dev]
