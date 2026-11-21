@@ -1,76 +1,125 @@
-# Workshop: Training Qwen with GRPO for a Farm Operations Agent
+# Training an LLM Farm Agent with GRPO
 
-90–100 min practical lecture · Qwen2.5-0.5B-Instruct · GRPO + LoRA · Hugging Face TRL
+**Qwen2.5-0.5B-Instruct · GRPO + LoRA · Hugging Face TRL** · practical workshop
 
-Students train a small LLM with reinforcement learning (GRPO) to pick the right **read-only farm tool** and its
-arguments for a farm manager's request. The requests are in **Ukrainian**. Tool names, argument keys, the system
-prompt and the labels stay English / ISO, as with most real APIs. The notebook text is English.
-**All data is synthetic dummy data**, generated from a seed (`src/farm_grpo/environment.py`).
+> *Can we improve an LLM's ability to investigate farm operations by rewarding it for choosing the correct tools and using the returned data?*
 
-The instructor timeline and the commands for the day are in **[`DEMO.md`](DEMO.md)**.
+In this workshop you use reinforcement learning (GRPO) to teach a small language model to answer a farm manager's request
+with the right **tool call**: one of four read-only farm tools, with correct arguments. The requests are in **Ukrainian**:
 
-## Contents
-
-```
-workshop_uk.ipynb           the workshop notebook (Sections 0-9), committed with outputs
-src/farm_grpo/
-  config.py                 hyper-parameters and paths (WorkshopConfig)
-  environment.py            dummy farm world, 4 tools, argument normalisation
-  prompts.py                system prompts (single-step + agent)
-  dataset.py                Ukrainian request templates, template-family split 240/40/80
-  parsing.py                JSON tool-call parsing / validation
-  rewards.py                reward functions (format / tool / args) + check_rewards test harness
-  rewards_bad.py            many_args_reward: a deliberately hackable reward (Section 8.1)
-  train.py                  train_grpo: GRPOTrainer + LoRA + held-out evaluation callback
-  background.py             runs the two trainings as background processes (start_runs, status, wait_for)
-  evaluate.py               generation, metrics, error breakdown, reward-variance check
-  agent.py                  multi-step investigation loop + outcome grading (Section 8.2)
-  plotting.py               advantage toy plot, training curves, comparison chart, training_summary
-tests/                      pytest checks: split leakage, labels, rewards, agent grading
-data/                       generated train/val/test jsonl + farm_world.json
-outputs/                    live_run/, hack_many_args/ (training logs), results.json
+```text
+Скільки разів робот-підштовхувач працював у корівнику D сьогодні ввечері?
+  -> {"tool": "get_robot_events", "arguments": {"barn_id": "D", "start_time": "18:00", "end_time": "22:00"}}
 ```
 
-## Setup
+Tool names, argument keys and the system prompt stay in English, as with most real APIs. The notebook text is English.
+
+⚠️ **All data is synthetic dummy data.** The farm, its barns, cameras and events are generated from a random seed.
+
+---
+
+## What you need
+
+* An **NVIDIA GPU with at least 12 GB** of memory. A full run peaked at ~9.7 GB on an RTX 3090.
+  A CPU is far too slow for training.
+* Linux with an NVIDIA driver **≥ 580** for the default setup (CUDA 13 PyTorch). For an older driver, see [Troubleshooting](#troubleshooting).
+* Internet access on the first run, to download the model (~1 GB) from Hugging Face.
+* [`uv`](https://docs.astral.sh/uv/getting-started/installation/), the Python package manager.
+
+## Quick start
 
 ```bash
-uv python install 3.12            # uv-managed Python ships headers (Triton needs Python.h)
+git clone https://github.com/Mudryi/grpo-farm-agent-workshop.git
+cd grpo-farm-agent-workshop
+
+uv python install 3.12
 uv venv --python-preference only-managed --python 3.12
 uv sync
-uv run pytest -q
+
+uv run pytest -q                       # sanity check: all tests should pass
 uv run jupyter lab workshop_uk.ipynb
 ```
 
-> With a system Python that has no `python3.12-dev` headers, TRL's Triton kernel fails with
-> `CalledProcessError ... gcc`. Use the uv-managed interpreter (above) or install the dev headers.
+Then run the notebook **from top to bottom** (*Run → Run All Cells*).
+The whole notebook takes **~6–7 minutes** on an RTX 3090.
 
-Colab / other machines: `pip install -e . && pip install jupyter` (the `pytorch-cu130` index in `pyproject.toml` only applies to uv).
+> The notebook in the repo already contains the outputs from our run, so you can read the results before running anything.
 
-## How training runs
+## How the notebook works
 
-The third code cell calls `start_runs(["live", "hack"])`. That starts two GRPO trainings as separate processes
-(`python -m farm_grpo.background <name>`), defined in `RUNS` in `background.py`:
+The **third code cell starts two GRPO trainings in the background**. They are separate processes, so you keep working through
+the notebook while they train (~6 min). Call `status()` any time to see their progress.
+Sections 6 and 8 wait for them automatically.
 
-| Run | Reward | Steps | Output |
+| Run | Reward | Steps | Purpose |
 |---|---|---|---|
-| `live` | `rewards.REWARD_FUNCS` (format + tool + arguments) | 100 | `outputs/live_run/` |
-| `hack` | `rewards_bad.many_args_reward` | 60 (lr 5e-5) | `outputs/hack_many_args/` |
+| `live` | the real reward: format + correct tool + correct arguments | 100 | the actual result |
+| `hack` | a deliberately bad reward (`many_args`: more argument keys = more reward) | 60 | reward-hacking demo |
 
-Both finish ~6 min later, while Section 1 is presented. Sections 6 and 8 call `wait_for(...)` and then read the results.
-Logs: `outputs/logs/<run>.log`.
+The two runs use the same data and the same settings; only the reward differs.
 
-## Results (RTX 3090, 80 test prompts, greedy decoding)
+| Section | What you do |
+|---|---|
+| 0 | Setup, start the training |
+| 1 | Why RL? How GRPO works (group-relative advantages) and where it fits next to SFT, PPO and DPO |
+| 2 | Explore the farm environment and call the tools by hand |
+| 3 | The dataset and the **template-family split** (test = phrasings the model never saw) |
+| 4 | Baseline of the untrained model + "does GRPO even have a learning signal?" check |
+| 5 | The reward functions, checked against test cases |
+| 6 | Training curves of the live run |
+| 7 | Evaluation on the test set + error analysis |
+| 8 | Reward hacking, and a multi-step agent ("was the robot late?") |
+| 9 | Summary of all metrics |
 
-| Metric | Before GRPO | After GRPO (100 steps) | Bad reward `many_args` (60 steps) |
+## Results from our run
+
+RTX 3090, 80 test prompts, greedy decoding. Your numbers will differ a little: these are single training runs.
+
+| Metric | Before GRPO | After GRPO (100 steps) | Bad reward `many_args` |
 |---|---|---|---|
-| Valid tool-call JSON (%) | 95.0 | 100.0 | 100.0 |
-| Correct tool selection (%) | 81.2 | 86.2 | 25.0 |
-| **Overall task success (%)** | **37.5** | **58.8** | **0.0** |
+| Valid tool-call JSON | 95.0 % | 100.0 % | 100.0 % |
+| Correct tool selection | 81.2 % | 86.2 % | 25.0 % |
+| **Overall task success** | **37.5 %** | **58.8 %** | **0.0 %** |
 
-* **GRPO helps, through the arguments.** Day parts («сьогодні ввечері» → 18:00–22:00) and Ukrainian dates improve the most. Format was already fine before training.
-* **Validation overstates it.** Validation reaches ~88–90 %, test only ~60 %, because the test families contain distractors.
-  «Камера 3 працює нормально…» still makes the model call the camera tool.
-* **Reward hacking:** the `many_args` training reward rises ~0.57 → ~0.95 while task success falls to 0 %.
-* **No transfer to multi-step:** the 2-tool "was the robot late?" questions stay at 0 % success.
+What to take away:
+* **GRPO helps, mostly through the arguments.** The model learns to turn «сьогодні ввечері», «7.30» or «8 березня» into canonical values. Format was already fine before training.
+* **Validation can overstate success.** Validation reaches ~88–90 %, the test set only ~60 %: the test phrasings contain distractors such as «Камера 3 працює нормально…», which still make the model pick the camera tool.
+* **The reward is the specification.** With `many_args` the training reward rises to ~0.95 while real task success falls to 0 %.
+* **Single-step training does not transfer to multi-step investigation.** The 2-tool question stays at 0 % success.
 
-Timing on the 3090: ~3 s per GRPO step; the whole notebook runs in ~6.5 min. Single-seed runs, so numbers vary between runs.
+## Where to look in the code
+
+All logic lives in `src/farm_grpo/`; the notebook only calls it.
+
+| File | What's inside |
+|---|---|
+| `rewards.py` | the three reward functions and the `check_rewards` test cases |
+| `rewards_bad.py` | `many_args_reward`, the hackable reward |
+| `train.py` | `train_grpo`: TRL `GRPOTrainer` + LoRA + held-out evaluation every N steps |
+| `background.py` | the two runs (`RUNS`) and `start_runs` / `status` / `wait_for` |
+| `environment.py` | the dummy farm, the 4 tools, argument normalisation (`"7:00"` = `"07:00"`) |
+| `dataset.py` | Ukrainian request templates and the train / val / test split |
+| `evaluate.py` | metrics, error breakdown, reward-variance check |
+| `agent.py` | the multi-step agent loop and its grading |
+| `config.py` | all hyper-parameters (`WorkshopConfig`) |
+
+**GRPO itself happens inside TRL.** In `.venv/lib/python3.12/site-packages/trl/trainer/grpo_trainer.py`, search for these methods:
+* `_generate_and_score_completions`: samples G completions per prompt, calls the reward functions, computes the advantage `(r − group mean) / group std`.
+* `_compute_loss`: the clipped policy-gradient loss.
+
+## Things to try
+
+* Change hyper-parameters in `src/farm_grpo/config.py` (e.g. `num_generations`, `learning_rate`, `live_max_steps`) or the runs in `RUNS` (`background.py`), then rerun the notebook.
+* Fix `many_args_reward` minimally so it can no longer be hacked.
+* Design an **outcome reward** for the multi-step agent: reward 1 only if the final answer is right *and* both required tools were used.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `CalledProcessError ... gcc` during training | Python has no development headers (Triton needs `Python.h`). Use the uv-managed Python from Quick start, or install `python3.12-dev` |
+| `uv sync` installs a PyTorch that does not see your GPU (driver older than 580) | In `pyproject.toml`, change `whl/cu130` to `whl/cu128`, then run `uv lock && uv sync` |
+| `status()` shows `FAILED` | Read `outputs/logs/live.log` or `outputs/logs/hack.log` |
+| CUDA out of memory | Close other GPU programs (`nvidia-smi`), restart the kernel |
+| You restarted the kernel during training | Fine: the background runs keep going, and `start_runs` does not start them twice |
+| No `uv` (e.g. Colab) | `pip install -e . jupyter`. The default PyPI PyTorch works there |
